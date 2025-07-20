@@ -2,7 +2,7 @@ import 'dotenv/config';
 import Redis from 'ioredis';
 import * as fs from 'fs';
 import { dirname } from 'path';
-import { STREAM_BC, S3_ROOT, STREAM_CB } from '../../../common/constants';
+import { STREAM_BC, CONCAT_S3_ROOT, STREAM_CB, ZOOM_S3_ROOT } from '../../../common/constants';
 import { ChunkQueueMessage } from '../../../common/types';
 import { ffconcat } from '../../../common/ffconcat';
 import { initLogger } from '../../../common/logger';
@@ -14,13 +14,23 @@ const pub = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
 async function concatPiece(meetingId: string, chunkPath: string, seq: number) {
   // remove any query params from path
   const cleanChunk = chunkPath.split('?')[0];
-  const mainPath = path.join(S3_ROOT, meetingId, 'main.wav');
+  const mainPath = path.join(CONCAT_S3_ROOT, meetingId, 'main.wav');
   await fs.promises.mkdir(dirname(mainPath), { recursive: true });
 
   if (fs.existsSync(mainPath)) {
     const tmp = `${mainPath}.tmp`;
     ffconcat(mainPath, cleanChunk, tmp);
-    await fs.promises.rename(tmp, mainPath);
+    try {
+      await fs.promises.rename(tmp, mainPath);
+    } catch (err: any) {
+      if (err?.code === 'EEXIST' || err?.code === 'EPERM') {
+        // Windows cannot overwrite existing file via rename, fallback to replace
+        await fs.promises.unlink(mainPath).catch(() => {});
+        await fs.promises.rename(tmp, mainPath);
+      } else {
+        throw err;
+      }
+    }
   } else {
     await fs.promises.copyFile(cleanChunk, mainPath);
   }
@@ -35,7 +45,9 @@ async function concatPiece(meetingId: string, chunkPath: string, seq: number) {
 
 async function main() {
   let lastId = '0-0';
-  console.log('worker ready');
+
+  console.log('worker is running');
+
   while (true) {
     const res = await sub.xread('BLOCK', 0, 'STREAMS', STREAM_BC, lastId);
     if (!res) continue;

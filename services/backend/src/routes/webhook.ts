@@ -21,7 +21,6 @@ router.post('/chunk', async (req: Request, res: Response, next: NextFunction) =>
        ON CONFLICT (meetingId,seq) DO UPDATE SET path=EXCLUDED.path`,
       [meetingId, seq, path]
     );
-    console.log(`DB upsert seq=${seq}`);
 
     // always send to processing queue
     const msg: ChunkQueueMessage = { meetingId, seq, path };
@@ -30,12 +29,11 @@ router.post('/chunk', async (req: Request, res: Response, next: NextFunction) =>
       '*',
       'json', JSON.stringify(msg)
     );
-    console.log(`Queued seq=${seq} to processing queue`);
+    // console.log(`Queued seq=${seq} to processing queue`);
 
     // send to concat only if this is first chunk
     // or the immediate previous seq already exists in DB
-    const seqNum = seq!; // validated above
-    let ready = seqNum === 0;           // first chunk can always go
+    let ready = +seq === 0;           // first chunk can always go
 
     if (!ready) {
       const { rowCount } = await pool.query(
@@ -45,25 +43,31 @@ router.post('/chunk', async (req: Request, res: Response, next: NextFunction) =>
             AND seq       = $2          -- previous chunk
             AND concat_status = 'done'  -- already appended
           LIMIT 1`,
-        [meetingId, seqNum - 1]
+        [meetingId, +seq - 1]
       );
       ready = rowCount === 1;
     }
 
     if (ready) {
+      // atomically update concat_status -> running so we don't queue duplicates later
+      await pool.query(
+        `UPDATE chunks SET concat_status='running'
+          WHERE meetingId=$1 AND seq=$2
+            AND concat_status='queued'`,
+        [meetingId, seq]
+      );
       await pub.xadd(
         STREAM_BC,
         '*',
         'json', JSON.stringify(msg)
       );
-      console.log(`Queued seq=${seqNum} to concat queue`);
-    } else {
-      console.log(`Seq=${seqNum} waiting for previous concat`);
-    }
+      console.log(`Queued seq=${seq} to concat queue`);
+    } 
+
     res.json({ status: 'queued' });
   } catch (err) {
     next(err);
   }
 });
 
-export default router; 
+export default router;

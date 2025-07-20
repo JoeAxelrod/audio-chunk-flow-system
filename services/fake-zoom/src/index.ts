@@ -1,6 +1,6 @@
-import { chunkPath } from '../../../common/constants';
+import { chunkPath, CONCAT_S3_ROOT, ZOOM_S3_ROOT } from '../../../common/constants';
 import * as fs from 'fs';
-import { dirname } from 'path';
+import path, { dirname } from 'path';
 import { fetch } from 'undici';
 import shuffle from 'lodash/shuffle';
 import { randomUUID } from 'crypto';
@@ -8,7 +8,7 @@ import { initLogger } from '../../../common/logger';
 
 const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
 const meetingId = process.env.MEETING_ID || randomUUID();
-const totalChunks = Number(process.env.TOTAL_CHUNKS || 30);
+const totalChunks = Number(process.env.TOTAL_CHUNKS || 15);
 
 // initialize logger without publishing to Redis
 initLogger('ZOOM','yellow',false);
@@ -18,10 +18,15 @@ function generateAudio(seq: number): Buffer {
 }
 
 async function main() {
+
+  try {
+    // clean previous run files just for make things nice and clean
+    await fs.promises.rm(path.join(CONCAT_S3_ROOT), { recursive: true, force: true });
+  } catch {}
   
   try {
     // clean previous run files just for make things nice and clean
-    await fs.promises.rm(`${require('../../../common/constants').S3_ROOT}/${meetingId}`, { recursive: true, force: true });
+    await fs.promises.rm(path.join(ZOOM_S3_ROOT), { recursive: true, force: true });
   } catch {}
 
   const seqs = shuffle([...Array(totalChunks).keys()]);

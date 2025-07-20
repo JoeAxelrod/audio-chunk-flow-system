@@ -21,8 +21,6 @@
     "@types/pg": "^8.10.2"
   },
   "scripts": {
-    "start1": "ts-node src/index.ts",
     "start": "ts-node src/index.ts"
-
   }
 }   

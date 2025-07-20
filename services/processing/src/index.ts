@@ -11,7 +11,9 @@ initLogger('processing','green');
 
 async function main() {
   let lastId = '0-0';
-  console.log('worker waiting');
+  console.log('worker waiting');  
+
+
   while (true) {
     const res = await redis.xread('BLOCK', 0, 'STREAMS', STREAM_BP, lastId);
     if (!res) continue;
