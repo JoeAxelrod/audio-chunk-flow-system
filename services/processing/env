@@ -1,0 +1,6 @@
+REDIS_URL=redis://queue:6379
+PGHOST=db
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=postgres
+PGDATABASE=postgres 

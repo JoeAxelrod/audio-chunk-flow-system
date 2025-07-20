@@ -1,0 +1,83 @@
+version: '3.9'
+
+services:
+  queue:
+    image: redis:7
+    container_name: queue
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:15
+    container_name: db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  fake-zoom:
+    build:
+      context: .
+      dockerfile: services/fake-zoom/Dockerfile
+    env_file:
+      - services/fake-zoom/.env
+    depends_on:
+      - queue
+
+  processing:
+    build:
+      context: .
+      dockerfile: services/processing/Dockerfile
+    env_file:
+      - services/processing/.env
+    depends_on:
+      - queue
+      - db
+    volumes:
+      - s3data:/data/s3
+
+  concat:
+    build:
+      context: .
+      dockerfile: services/concat/Dockerfile
+    env_file:
+      - services/concat/.env
+    depends_on:
+      - queue
+    volumes:
+      - s3data:/data/s3
+
+  backend:
+    build:
+      context: .
+      dockerfile: services/backend/Dockerfile
+    env_file:
+      - services/backend/.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - queue
+      - db
+      - concat
+      - processing
+    volumes:
+      - s3data:/data/s3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+    env_file:
+      - services/frontend/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  s3data: 
